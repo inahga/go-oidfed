@@ -17,6 +17,12 @@ func NewBadgerStorage(path string) (*BadgerStorage, error) {
 	return storage, err
 }
 
+func NewInMemoryBadgerStorage() (*BadgerStorage, error) {
+	storage := &BadgerStorage{}
+	err := storage.LoadInMemory()
+	return storage, err
+}
+
 // BadgerStorage is a type for a simple database storage backend -
 type BadgerStorage struct {
 	*badger.DB
@@ -155,20 +161,37 @@ func (store *BadgerStorage) Load() error {
 		return err
 	}
 	store.DB = db
+	store.runGC()
+	store.loaded = true
+	return nil
+}
 
+func (store *BadgerStorage) LoadInMemory() error {
+	if store.loaded {
+		return nil
+	}
+	db, err := badger.Open(badger.DefaultOptions("").WithInMemory(true))
+	if err != nil {
+		return err
+	}
+	store.DB = db
+	store.runGC()
+	store.loaded = true
+	return nil
+}
+
+func (store *BadgerStorage) runGC() {
 	go func() {
 		ticker := time.NewTicker(5 * time.Minute)
 		defer ticker.Stop()
 		for range ticker.C {
 		again:
-			err := db.RunValueLogGC(0.7)
+			err := store.RunValueLogGC(0.7)
 			if err == nil {
 				goto again
 			}
 		}
 	}()
-	store.loaded = true
-	return nil
 }
 
 // SubordinateBadgerStorage is a type implementing the SubordinateStorageBackend interface
